@@ -51,26 +51,35 @@ export function extractAsin(url: string): string | null {
  * @returns 切り詰めたテキスト（超過時は maxLength 文字以内に収めて末尾に"..."を付加）
  */
 export function truncateText(text: string, maxLength: number): string {
+  // maxLength <= 0 の場合は空文字を返す
+  if (maxLength <= 0) {
+    return '';
+  }
   if (text.length <= maxLength) {
     return text;
   }
+  // maxLength <= 3 の場合は省略記号をmaxLength文字分で返す（"..." 3文字の余地がない）
+  if (maxLength <= 3) {
+    return '.'.repeat(maxLength);
+  }
   // 省略記号3文字分を確保してスライスする
-  const sliceLength = Math.max(0, maxLength - 3);
+  const sliceLength = maxLength - 3;
   return text.slice(0, sliceLength) + '...';
 }
 
 /**
  * アフィリエイトリンクURLを生成する
  *
- * @param asin - Amazon ASIN（空文字は不可）
+ * @param asin - Amazon ASIN（英数字10文字）
  * @returns アソシエイトタグ付きのURL
- * @throws {Error} ASINが空の場合
+ * @throws {Error} ASINが不正な形式の場合
  */
 export function generateAffiliateUrl(asin: string): string {
-  if (!asin) {
-    throw new Error('Invalid ASIN: ASIN must not be empty');
+  // ASINは英数字10文字に限定する（厳密バリデーション）
+  if (!/^[A-Z0-9]{10}$/i.test(asin)) {
+    throw new Error('Invalid ASIN: ASIN must be a 10-character alphanumeric string');
   }
-  return `${AMAZON_BASE_URL}/dp/${asin}/ref=nosim?tag=${ASSOCIATE_TAG}`;
+  return `${AMAZON_BASE_URL}/dp/${asin.toUpperCase()}/ref=nosim?tag=${ASSOCIATE_TAG}`;
 }
 
 /**
@@ -88,32 +97,42 @@ export function generateAffiliateUrl(asin: string): string {
  * @returns 抽出した商品情報
  */
 export function extractProductInfo(doc: Document, url: string): ProductInfo {
+  /**
+   * 複数の候補から最初の非空文字列を返すヘルパー
+   * ?? と異なり、空文字('')も無視して次の候補にフォールバックする
+   */
+  const firstNonEmpty = (...values: Array<string | null | undefined>): string =>
+    values.find((v) => v?.trim())?.trim() ?? '';
+
   // タイトル抽出: #productTitle → #title → document.title
-  const title =
-    doc.querySelector('#productTitle')?.textContent?.trim() ??
-    doc.querySelector('#title')?.textContent?.trim() ??
-    doc.title;
+  // ||で空文字もフォールバック対象にする（Amazonのプレースホルダ要素対策）
+  const title = firstNonEmpty(
+    doc.querySelector('#productTitle')?.textContent,
+    doc.querySelector('#title')?.textContent,
+    doc.title,
+  );
 
   // 画像URL抽出: #landingImage → #imgBlkFront → #main-image
-  const imageUrl =
-    (doc.querySelector('#landingImage') as HTMLImageElement | null)?.src ??
-    (doc.querySelector('#imgBlkFront') as HTMLImageElement | null)?.src ??
-    (doc.querySelector('#main-image') as HTMLImageElement | null)?.src ??
-    '';
+  // ||で空文字もフォールバック対象にする
+  const imageUrl = firstNonEmpty(
+    (doc.querySelector('#landingImage') as HTMLImageElement | null)?.src,
+    (doc.querySelector('#imgBlkFront') as HTMLImageElement | null)?.src,
+    (doc.querySelector('#main-image') as HTMLImageElement | null)?.src,
+  );
 
   // 説明文抽出: meta[name="description"] → #productDescription
-  const rawDescription =
-    (doc.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content ??
-    doc.querySelector('#productDescription')?.textContent?.trim() ??
-    '';
+  const rawDescription = firstNonEmpty(
+    (doc.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content,
+    doc.querySelector('#productDescription')?.textContent,
+  );
   const description = truncateText(rawDescription, MAX_DESCRIPTION_LENGTH);
 
   // 価格抽出: .a-price .a-offscreen → #priceblock_ourprice → .a-price-whole
-  const price =
-    doc.querySelector('.a-price .a-offscreen')?.textContent?.trim() ??
-    doc.querySelector('#priceblock_ourprice')?.textContent?.trim() ??
-    doc.querySelector('.a-price-whole')?.textContent?.trim() ??
-    '';
+  const price = firstNonEmpty(
+    doc.querySelector('.a-price .a-offscreen')?.textContent,
+    doc.querySelector('#priceblock_ourprice')?.textContent,
+    doc.querySelector('.a-price-whole')?.textContent,
+  );
 
   // ASIN抽出
   const asin = extractAsin(url) ?? '';
@@ -136,7 +155,8 @@ export function extractProductInfo(doc: Document, url: string): ProductInfo {
  * @returns 自己完結型の埋め込みHTML文字列
  */
 export function generateEmbedHtml(product: ProductInfo): string {
-  const affiliateUrl = generateAffiliateUrl(product.asin);
+  // affiliateUrlもhref属性コンテキスト用にエスケープする（二重防御）
+  const affiliateUrl = escapeHtml(generateAffiliateUrl(product.asin));
   // imageUrlを属性コンテキスト用にエスケープする
   const safeImageUrl = escapeHtml(product.imageUrl);
 

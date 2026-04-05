@@ -25,27 +25,46 @@
     if (text.length <= maxLength) {
       return text;
     }
-    const sliceLength = Math.max(0, maxLength - 3);
+    const sliceLength = maxLength - 3;
     return text.slice(0, sliceLength) + "...";
   }
   function generateAffiliateUrl(asin) {
-    if (!asin) {
-      throw new Error("Invalid ASIN: ASIN must not be empty");
+    if (!/^[A-Z0-9]{10}$/i.test(asin)) {
+      throw new Error("Invalid ASIN: ASIN must be a 10-character alphanumeric string");
     }
-    return `${AMAZON_BASE_URL}/dp/${asin}/ref=nosim?tag=${ASSOCIATE_TAG}`;
+    return `${AMAZON_BASE_URL}/dp/${asin.toUpperCase()}/ref=nosim?tag=${ASSOCIATE_TAG}`;
   }
   function extractProductInfo(doc, url) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p;
-    const title = ((_b = (_a = doc.querySelector("#productTitle")) == null ? void 0 : _a.textContent) == null ? void 0 : _b.trim()) ?? ((_d = (_c = doc.querySelector("#title")) == null ? void 0 : _c.textContent) == null ? void 0 : _d.trim()) ?? doc.title;
-    const imageUrl = ((_e = doc.querySelector("#landingImage")) == null ? void 0 : _e.src) ?? ((_f = doc.querySelector("#imgBlkFront")) == null ? void 0 : _f.src) ?? ((_g = doc.querySelector("#main-image")) == null ? void 0 : _g.src) ?? "";
-    const rawDescription = ((_h = doc.querySelector('meta[name="description"]')) == null ? void 0 : _h.content) ?? ((_j = (_i = doc.querySelector("#productDescription")) == null ? void 0 : _i.textContent) == null ? void 0 : _j.trim()) ?? "";
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+    const firstNonEmpty = (...values) => {
+      var _a2;
+      return ((_a2 = values.find((v) => v == null ? void 0 : v.trim())) == null ? void 0 : _a2.trim()) ?? "";
+    };
+    const title = firstNonEmpty(
+      (_a = doc.querySelector("#productTitle")) == null ? void 0 : _a.textContent,
+      (_b = doc.querySelector("#title")) == null ? void 0 : _b.textContent,
+      doc.title
+    );
+    const imageUrl = firstNonEmpty(
+      (_c = doc.querySelector("#landingImage")) == null ? void 0 : _c.src,
+      (_d = doc.querySelector("#imgBlkFront")) == null ? void 0 : _d.src,
+      (_e = doc.querySelector("#main-image")) == null ? void 0 : _e.src
+    );
+    const rawDescription = firstNonEmpty(
+      (_f = doc.querySelector('meta[name="description"]')) == null ? void 0 : _f.content,
+      (_g = doc.querySelector("#productDescription")) == null ? void 0 : _g.textContent
+    );
     const description = truncateText(rawDescription, MAX_DESCRIPTION_LENGTH);
-    const price = ((_l = (_k = doc.querySelector(".a-price .a-offscreen")) == null ? void 0 : _k.textContent) == null ? void 0 : _l.trim()) ?? ((_n = (_m = doc.querySelector("#priceblock_ourprice")) == null ? void 0 : _m.textContent) == null ? void 0 : _n.trim()) ?? ((_p = (_o = doc.querySelector(".a-price-whole")) == null ? void 0 : _o.textContent) == null ? void 0 : _p.trim()) ?? "";
+    const price = firstNonEmpty(
+      (_h = doc.querySelector(".a-price .a-offscreen")) == null ? void 0 : _h.textContent,
+      (_i = doc.querySelector("#priceblock_ourprice")) == null ? void 0 : _i.textContent,
+      (_j = doc.querySelector(".a-price-whole")) == null ? void 0 : _j.textContent
+    );
     const asin = extractAsin(url) ?? "";
     return { title, imageUrl, description, price, asin };
   }
   function generateEmbedHtml(product) {
-    const affiliateUrl = generateAffiliateUrl(product.asin);
+    const affiliateUrl = escapeHtml(generateAffiliateUrl(product.asin));
     const safeImageUrl = escapeHtml(product.imageUrl);
     return `<div class="amazon-link-card" style="
   max-width: 600px;

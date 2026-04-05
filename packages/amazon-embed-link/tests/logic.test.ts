@@ -51,6 +51,20 @@ describe('truncateText', () => {
     const テキスト = 'あ'.repeat(100);
     expect(truncateText(テキスト, 100)).toBe(テキスト);
   });
+
+  it('maxLength=0の場合は空文字を返す', () => {
+    expect(truncateText('テキスト', 0)).toBe('');
+  });
+
+  it('maxLength=1の場合は長さ1以内に収まる', () => {
+    const 結果 = truncateText('テキスト', 1);
+    expect(結果.length).toBeLessThanOrEqual(1);
+  });
+
+  it('maxLength=2の場合は長さ2以内に収まる', () => {
+    const 結果 = truncateText('テキスト', 2);
+    expect(結果.length).toBeLessThanOrEqual(2);
+  });
 });
 
 describe('generateAffiliateUrl', () => {
@@ -62,6 +76,14 @@ describe('generateAffiliateUrl', () => {
 
   it('空のASINの場合はエラーをスローする', () => {
     expect(() => generateAffiliateUrl('')).toThrow('Invalid ASIN');
+  });
+
+  it('10文字未満のASINの場合はエラーをスローする', () => {
+    expect(() => generateAffiliateUrl('B08NNJ')).toThrow('Invalid ASIN');
+  });
+
+  it('英数字以外を含むASINの場合はエラーをスローする', () => {
+    expect(() => generateAffiliateUrl('B08NNJZGX!')).toThrow('Invalid ASIN');
   });
 });
 
@@ -123,6 +145,16 @@ describe('extractProductInfo', () => {
     doc.body.innerHTML = `<span id="productTitle">テスト商品</span>`;
     const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
     expect(info.asin).toBe('B08NNJZGXN');
+  });
+
+  it('#productTitleが空文字の場合は#titleにフォールバックする', () => {
+    // 空のプレースホルダ要素が存在してもフォールバックが機能すること
+    doc.body.innerHTML = `
+      <span id="productTitle">   </span>
+      <span id="title">フォールバックタイトル</span>
+    `;
+    const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
+    expect(info.title).toBe('フォールバックタイトル');
   });
 
   it('要素が見つからない場合は空文字を返す', () => {

@@ -2,7 +2,7 @@
 
 ## インストール
 
-[クリックしてインストール](../../../raw/main/packages/amazon-embed-link/dist/amazon-embed-link.user.js)
+[クリックしてインストール](https://github.com/mtane0412/tampermonkey-scripts/raw/main/packages/amazon-embed-link/dist/amazon-embed-link.user.js)
 
 ## 概要
 
