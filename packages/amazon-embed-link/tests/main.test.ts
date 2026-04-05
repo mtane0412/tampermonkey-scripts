@@ -28,6 +28,13 @@ describe('createEmbedButton', () => {
     expect(button.textContent).toContain('埋め込みリンク');
   });
 
+  it('Amazonのa-button a-button-primaryクラスが設定されている（スタイル統一）', () => {
+    // 「リンク生成」ボタンと同じクラスを継承してスタイルを統一する
+    const button = createEmbedButton(() => {});
+    expect(button.classList.contains('a-button')).toBe(true);
+    expect(button.classList.contains('a-button-primary')).toBe(true);
+  });
+
   it('aria-labelが設定されている（アクセシビリティ）', () => {
     const button = createEmbedButton(() => {});
     expect(button.getAttribute('aria-label')).toBe('埋め込みリンク');
@@ -116,5 +123,20 @@ describe('SiteStripeへのボタン挿入', () => {
     insertButtonAfterSiteStripe(() => {});
     const container = document.getElementById('amazon-embed-button-container');
     expect(container).not.toBeNull();
+  });
+
+  it('コンテナにamzn-ss-link-containerとamzn-ss-get-link-containerクラスが設定される', () => {
+    // 「リンク生成」コンテナと同じクラス構成でレイアウトを統一する
+    insertButtonAfterSiteStripe(() => {});
+    const container = document.getElementById('amazon-embed-button-container');
+    expect(container?.classList.contains('amzn-ss-link-container')).toBe(true);
+    expect(container?.classList.contains('amzn-ss-get-link-container')).toBe(true);
+  });
+
+  it('コンテナにstyle属性が付かない（Amazonのクラスに委ねる）', () => {
+    // 独自インラインスタイルを使わずAmazon既存CSSクラスに従う
+    insertButtonAfterSiteStripe(() => {});
+    const container = document.getElementById('amazon-embed-button-container');
+    expect(container?.getAttribute('style')).toBeFalsy();
   });
 });
