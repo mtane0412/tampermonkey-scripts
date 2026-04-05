@@ -29,25 +29,36 @@ let copyResetTimerId: ReturnType<typeof setTimeout> | undefined;
 
 /**
  * 埋め込みリンク生成ボタンを作成する
- * Amazon SiteStripeの「リンク生成」ボタンと同じスタイルで表示する
+ * AmazonのCSSコンポーネント構造（span.a-button > span.a-button-inner > button.a-button-text）に
+ * 従って生成することで、高さ・幅・スタイルが「リンク生成」ボタンと一致する。
  *
  * @param onClick - ボタンクリック時のコールバック
- * @returns 生成したボタン要素
+ * @returns 外側のspanコンテナ要素（Amazonのa-button構造の最外殻）
  */
-export function createEmbedButton(onClick: () => void): HTMLButtonElement {
+export function createEmbedButton(onClick: () => void): HTMLSpanElement {
+  // 最外殻: Amazonのa-buttonコンポーネントとして機能するspan
+  const outer = document.createElement('span');
+  outer.id = 'amazon-embed-link-button';
+  outer.className = 'a-button a-button-primary';
+  outer.setAttribute('aria-label', '埋め込みリンク');
+  // リンク生成ボタンはa-declarativeスパン（ブロック要素）でラップされているため
+  // 同等の幅・高さを確保するためwidth:100%を設定する
+  outer.style.width = '100%';
+
+  // 中間層: Amazonのa-button-innerとして高さを制御するspan
+  const inner = document.createElement('span');
+  inner.className = 'a-button-inner';
+
+  // 実際のbutton要素: Amazonのa-button-textとしてテキストを表示する
   const button = document.createElement('button');
-  button.id = 'amazon-embed-link-button';
-  // 「リンク生成」ボタン（#amzn-ss-get-link-button）と同じクラスを使い、
-  // Amazonのスタイルをそのまま継承する
-  button.className = 'a-button a-button-primary';
+  button.className = 'a-button-text';
   button.textContent = '埋め込みリンク';
-  button.setAttribute('aria-label', '埋め込みリンク');
   button.type = 'button';
-  // リンク生成ボタンはa-declarativeスパンでラップされブロック表示されるため
-  // 同等の幅をインラインスタイルで確保する
-  button.style.width = '100%';
   button.addEventListener('click', onClick);
-  return button;
+
+  inner.appendChild(button);
+  outer.appendChild(inner);
+  return outer;
 }
 
 /**
