@@ -131,23 +131,10 @@
   function createEmbedButton(onClick) {
     const button = document.createElement("button");
     button.id = "amazon-embed-link-button";
-    button.className = "a-button-text";
+    button.className = "a-button a-button-primary";
     button.textContent = "埋め込みリンク";
     button.setAttribute("aria-label", "埋め込みリンク");
     button.type = "button";
-    button.style.cssText = `
-    background: #e77600;
-    border: 1px solid #c45500;
-    border-radius: 3px;
-    color: #111;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 700;
-    padding: 0 10px 0 11px;
-    height: 29px;
-    line-height: 29px;
-    white-space: nowrap;
-  `;
     button.addEventListener("click", onClick);
     return button;
   }
@@ -161,8 +148,7 @@
     }
     const container = document.createElement("div");
     container.id = BUTTON_CONTAINER_ID;
-    container.className = "amzn-ss-link-container";
-    container.style.cssText = "display: inline-block; margin-left: 8px; vertical-align: middle;";
+    container.className = "amzn-ss-link-container amzn-ss-get-link-container";
     const button = createEmbedButton(onClick);
     container.appendChild(button);
     linkContainer.insertAdjacentElement("afterend", container);
