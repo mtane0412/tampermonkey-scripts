@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    # タグ形式: <script-name>@<version> (例: example-script@1.0.0)
+    tags: ["*@*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: 依存パッケージをインストール
+        run: pnpm install --frozen-lockfile
+
+      - name: タグからスクリプト名とバージョンを抽出
+        id: meta
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          SCRIPT_NAME="${TAG%@*}"
+          VERSION="${TAG#*@}"
+          echo "script=$SCRIPT_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: スクリプトをビルド
+        run: pnpm --filter "@scripts/${{ steps.meta.outputs.script }}" run build
+
+      - name: GitHub Releaseを作成
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/${{ steps.meta.outputs.script }}/dist/*.user.js
+          name: "${{ steps.meta.outputs.script }} v${{ steps.meta.outputs.version }}"
+          generate_release_notes: true

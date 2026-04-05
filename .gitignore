@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.DS_Store
+
+# dist はgitに含める（Raw URLでインストール可能にするため）
+# packages/*/dist/ はトラッキング対象
