@@ -153,6 +153,7 @@ describe('SiteStripeへのボタン挿入', () => {
     // 同等の幅を確保するためbuttonにwidth:100%を設定する
     insertButtonAfterSiteStripe(() => {});
     const button = document.getElementById('amazon-embed-link-button');
-    expect(button?.style.width).toBe('100%');
+    expect(button).not.toBeNull();
+    expect((button as HTMLElement).style.width).toBe('100%');
   });
 });
