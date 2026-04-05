@@ -22,28 +22,36 @@ function createMockSiteStripe(): HTMLElement {
 }
 
 describe('createEmbedButton', () => {
-  it('埋め込みリンクボタンを生成できる', () => {
-    const button = createEmbedButton(() => {});
+  it('AmazonのDOMボタン構造（span.a-button > span.a-button-inner > button.a-button-text）で生成できる', () => {
+    // AmazonのCSSはspan.a-button > span.a-button-inner > button.a-button-textという
+    // 3層構造を前提としており、この構造に合わせることで高さ・幅が正しく表示される
+    const container = createEmbedButton(() => {});
+    expect(container).toBeInstanceOf(HTMLSpanElement);
+    const inner = container.querySelector('.a-button-inner');
+    const button = inner?.querySelector('button.a-button-text');
+    expect(inner).not.toBeNull();
     expect(button).toBeInstanceOf(HTMLButtonElement);
-    expect(button.textContent).toContain('埋め込みリンク');
+    expect(container.textContent).toContain('埋め込みリンク');
   });
 
-  it('Amazonのa-button a-button-primaryクラスが設定されている（スタイル統一）', () => {
-    // 「リンク生成」ボタンと同じクラスを継承してスタイルを統一する
-    const button = createEmbedButton(() => {});
-    expect(button.classList.contains('a-button')).toBe(true);
-    expect(button.classList.contains('a-button-primary')).toBe(true);
+  it('外側のspanにAmazonのa-button a-button-primaryクラスが設定されている（スタイル統一）', () => {
+    // Amazonのa-buttonコンポーネント構造に合わせて外側spanにクラスを設定する
+    const container = createEmbedButton(() => {});
+    expect(container.classList.contains('a-button')).toBe(true);
+    expect(container.classList.contains('a-button-primary')).toBe(true);
   });
 
-  it('aria-labelが設定されている（アクセシビリティ）', () => {
-    const button = createEmbedButton(() => {});
-    expect(button.getAttribute('aria-label')).toBe('埋め込みリンク');
+  it('外側のspanにaria-labelが設定されている（アクセシビリティ）', () => {
+    const container = createEmbedButton(() => {});
+    expect(container.getAttribute('aria-label')).toBe('埋め込みリンク');
   });
 
-  it('クリック時にコールバックが呼ばれる', () => {
+  it('内側のbuttonクリック時にコールバックが呼ばれる', () => {
     const コールバック = vi.fn();
-    const button = createEmbedButton(コールバック);
-    button.click();
+    const container = createEmbedButton(コールバック);
+    // クリックイベントは内側のbutton要素に登録されている
+    const innerButton = container.querySelector('button');
+    innerButton?.click();
     expect(コールバック).toHaveBeenCalledOnce();
   });
 });
@@ -138,5 +146,14 @@ describe('SiteStripeへのボタン挿入', () => {
     insertButtonAfterSiteStripe(() => {});
     const container = document.getElementById('amazon-embed-button-container');
     expect(container?.getAttribute('style')).toBeFalsy();
+  });
+
+  it('ボタンにwidth:100%が設定される（コンテナ幅に合わせて表示）', () => {
+    // リンク生成ボタンはa-declarativeスパンでラップされブロック表示されるため
+    // 同等の幅を確保するためbuttonにwidth:100%を設定する
+    insertButtonAfterSiteStripe(() => {});
+    const button = document.getElementById('amazon-embed-link-button');
+    expect(button).not.toBeNull();
+    expect((button as HTMLElement).style.width).toBe('100%');
   });
 });

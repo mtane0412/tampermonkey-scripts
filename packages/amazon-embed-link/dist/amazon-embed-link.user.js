@@ -129,14 +129,21 @@
   const SITESTRIPE_LINK_CONTAINER_SELECTOR = "#amzn-ss-get-link-container";
   let copyResetTimerId;
   function createEmbedButton(onClick) {
+    const outer = document.createElement("span");
+    outer.id = "amazon-embed-link-button";
+    outer.className = "a-button a-button-primary";
+    outer.setAttribute("aria-label", "埋め込みリンク");
+    outer.style.width = "100%";
+    const inner = document.createElement("span");
+    inner.className = "a-button-inner";
     const button = document.createElement("button");
-    button.id = "amazon-embed-link-button";
-    button.className = "a-button a-button-primary";
+    button.className = "a-button-text";
     button.textContent = "埋め込みリンク";
-    button.setAttribute("aria-label", "埋め込みリンク");
     button.type = "button";
     button.addEventListener("click", onClick);
-    return button;
+    inner.appendChild(button);
+    outer.appendChild(inner);
+    return outer;
   }
   function insertButtonAfterSiteStripe(onClick) {
     const linkContainer = document.querySelector(SITESTRIPE_LINK_CONTAINER_SELECTOR);
