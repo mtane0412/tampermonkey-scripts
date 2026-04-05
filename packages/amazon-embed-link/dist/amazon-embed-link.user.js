@@ -108,6 +108,7 @@
   const MODAL_OVERLAY_ID = "amazon-embed-modal-overlay";
   const BUTTON_CONTAINER_ID = "amazon-embed-button-container";
   const SITESTRIPE_LINK_CONTAINER_SELECTOR = "#amzn-ss-get-link-container";
+  let copyResetTimerId;
   function createEmbedButton(onClick) {
     const button = document.createElement("button");
     button.id = "amazon-embed-link-button";
@@ -168,7 +169,21 @@
         hideModal();
       }
     });
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        hideModal();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    overlay.dataset["keydownCleanup"] = "true";
+    overlay.addEventListener("remove-keydown", () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    });
+    const TITLE_ID = "amazon-embed-modal-title";
     const modal = document.createElement("div");
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", TITLE_ID);
     modal.style.cssText = `
     background: #fff;
     border-radius: 8px;
@@ -183,6 +198,7 @@
     const header = document.createElement("div");
     header.style.cssText = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;";
     const title = document.createElement("h2");
+    title.id = TITLE_ID;
     title.textContent = "埋め込みHTMLカード";
     title.style.cssText = "margin: 0; font-size: 18px; color: #111;";
     const closeButton = document.createElement("button");
@@ -241,7 +257,6 @@
     padding: 8px 20px;
     margin-top: 12px;
   `;
-    let copyResetTimerId;
     copyButton.addEventListener("click", () => {
       GM_setClipboard(html, "text");
       copyButton.textContent = "コピーしました！";
@@ -260,10 +275,16 @@
     modal.appendChild(copyButton);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+    closeButton.focus();
   }
   function hideModal() {
     const overlay = document.getElementById(MODAL_OVERLAY_ID);
-    overlay == null ? void 0 : overlay.remove();
+    if (overlay) {
+      overlay.dispatchEvent(new Event("remove-keydown"));
+      overlay.remove();
+    }
+    clearTimeout(copyResetTimerId);
+    copyResetTimerId = void 0;
   }
   function waitForSiteStripeAndInsertButton() {
     const MAX_RETRIES = 30;
@@ -274,9 +295,16 @@
       if (linkContainer) {
         clearInterval(intervalId);
         insertButtonAfterSiteStripe(() => {
-          const productInfo = extractProductInfo(document, location.href);
-          const embedHtml = generateEmbedHtml(productInfo);
-          showModal(embedHtml);
+          try {
+            const productInfo = extractProductInfo(document, location.href);
+            const embedHtml = generateEmbedHtml(productInfo);
+            showModal(embedHtml);
+          } catch (err) {
+            console.error("[amazon-embed-link] 商品情報の取得に失敗しました:", err);
+            alert(
+              "[amazon-embed-link] 商品情報の取得に失敗しました。\nこのページはAmazon商品ページではないか、ASINを取得できませんでした。"
+            );
+          }
         });
         return;
       }

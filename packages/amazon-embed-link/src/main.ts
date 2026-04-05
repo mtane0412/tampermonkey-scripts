@@ -22,6 +22,12 @@ const BUTTON_CONTAINER_ID = 'amazon-embed-button-container';
 const SITESTRIPE_LINK_CONTAINER_SELECTOR = '#amzn-ss-get-link-container';
 
 /**
+ * コピーボタンのラベル復元タイマーIDをモジュールスコープで管理する
+ * hideModal()から確実にキャンセルできるようにモジュールレベルで保持する
+ */
+let copyResetTimerId: ReturnType<typeof setTimeout> | undefined;
+
+/**
  * 埋め込みリンク生成ボタンを作成する
  * Amazon SiteStripeの「リンク生成」ボタンと同じスタイルで表示する
  *
@@ -83,6 +89,12 @@ export function insertButtonAfterSiteStripe(onClick: () => void): void {
 /**
  * 埋め込みHTMLカードのプレビューモーダルを表示する
  *
+ * アクセシビリティ対応:
+ * - role="dialog" と aria-modal="true" でダイアログとして認識させる
+ * - aria-labelledby でモーダルタイトルと関連付ける
+ * - 表示時にフォーカスを閉じるボタンに移動する
+ * - Escキーで閉じられる
+ *
  * @param html - 表示する埋め込みHTML文字列
  */
 export function showModal(html: string): void {
@@ -111,7 +123,26 @@ export function showModal(html: string): void {
     }
   });
 
+  // Escキーで閉じる
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      hideModal();
+    }
+  };
+  document.addEventListener('keydown', handleKeyDown);
+
+  // hideModal時にkeydownリスナーも削除できるようoverlayにクリーンアップを紐付ける
+  overlay.dataset['keydownCleanup'] = 'true';
+  overlay.addEventListener('remove-keydown', () => {
+    document.removeEventListener('keydown', handleKeyDown);
+  });
+
+  const TITLE_ID = 'amazon-embed-modal-title';
   const modal = document.createElement('div');
+  // スクリーンリーダーがダイアログとして認識できるようrole/aria属性を設定する
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', TITLE_ID);
   modal.style.cssText = `
     background: #fff;
     border-radius: 8px;
@@ -128,6 +159,7 @@ export function showModal(html: string): void {
   const header = document.createElement('div');
   header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;';
   const title = document.createElement('h2');
+  title.id = TITLE_ID;
   title.textContent = '埋め込みHTMLカード';
   title.style.cssText = 'margin: 0; font-size: 18px; color: #111;';
   const closeButton = document.createElement('button');
@@ -154,7 +186,7 @@ export function showModal(html: string): void {
   const preview = document.createElement('div');
   preview.id = 'amazon-embed-preview';
   preview.style.cssText = 'border: 1px solid #ddd; border-radius: 4px; padding: 16px; margin-bottom: 16px; background: #fafafa;';
-  // プレビューにHTMLを安全に挿入する（ユーザーが生成したHTML）
+  // プレビューにHTMLを安全に挿入する（generateEmbedHtmlがescapeHtmlで全ユーザーデータをエスケープ済み）
   preview.innerHTML = html;
 
   // HTMLコードセクション
@@ -195,12 +227,11 @@ export function showModal(html: string): void {
     padding: 8px 20px;
     margin-top: 12px;
   `;
-  // コピー後のラベル復元タイマーID（モーダル閉鎖時にキャンセルするため保持する）
-  let copyResetTimerId: ReturnType<typeof setTimeout> | undefined;
   copyButton.addEventListener('click', () => {
     GM_setClipboard(html, 'text');
     copyButton.textContent = 'コピーしました！';
     // 既存のタイマーをキャンセルしてから新しいタイマーを設定する
+    // タイマーIDはモジュールスコープで管理し、hideModal()からもキャンセル可能にする
     clearTimeout(copyResetTimerId);
     copyResetTimerId = setTimeout(() => {
       // モーダルがすでに閉じている場合はDOMを操作しない
@@ -218,14 +249,25 @@ export function showModal(html: string): void {
   modal.appendChild(copyButton);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+
+  // モーダル表示時に閉じるボタンにフォーカスを移動してキーボード操作を可能にする
+  closeButton.focus();
 }
 
 /**
  * モーダルオーバーレイをDOMから削除する
+ * Escキーハンドラーとコピーボタンのタイマーも合わせてクリーンアップする
  */
 export function hideModal(): void {
   const overlay = document.getElementById(MODAL_OVERLAY_ID);
-  overlay?.remove();
+  if (overlay) {
+    // Escキーのイベントリスナーを削除するためのカスタムイベントを発火する
+    overlay.dispatchEvent(new Event('remove-keydown'));
+    overlay.remove();
+  }
+  // コピーボタンのラベル復元タイマーをキャンセルする
+  clearTimeout(copyResetTimerId);
+  copyResetTimerId = undefined;
 }
 
 /**
@@ -243,9 +285,17 @@ function waitForSiteStripeAndInsertButton(): void {
     if (linkContainer) {
       clearInterval(intervalId);
       insertButtonAfterSiteStripe(() => {
-        const productInfo = extractProductInfo(document, location.href);
-        const embedHtml = generateEmbedHtml(productInfo);
-        showModal(embedHtml);
+        // ASIN取得・HTML生成の失敗を捕捉してユーザーにフィードバックする
+        try {
+          const productInfo = extractProductInfo(document, location.href);
+          const embedHtml = generateEmbedHtml(productInfo);
+          showModal(embedHtml);
+        } catch (err) {
+          console.error('[amazon-embed-link] 商品情報の取得に失敗しました:', err);
+          alert(
+            '[amazon-embed-link] 商品情報の取得に失敗しました。\nこのページはAmazon商品ページではないか、ASINを取得できませんでした。',
+          );
+        }
       });
       return;
     }
