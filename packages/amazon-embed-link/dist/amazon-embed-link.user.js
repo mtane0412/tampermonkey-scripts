@@ -135,6 +135,7 @@
     button.textContent = "埋め込みリンク";
     button.setAttribute("aria-label", "埋め込みリンク");
     button.type = "button";
+    button.style.width = "100%";
     button.addEventListener("click", onClick);
     return button;
   }

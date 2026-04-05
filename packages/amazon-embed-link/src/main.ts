@@ -43,6 +43,9 @@ export function createEmbedButton(onClick: () => void): HTMLButtonElement {
   button.textContent = '埋め込みリンク';
   button.setAttribute('aria-label', '埋め込みリンク');
   button.type = 'button';
+  // リンク生成ボタンはa-declarativeスパンでラップされブロック表示されるため
+  // 同等の幅をインラインスタイルで確保する
+  button.style.width = '100%';
   button.addEventListener('click', onClick);
   return button;
 }

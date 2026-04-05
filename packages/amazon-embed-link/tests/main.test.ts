@@ -139,4 +139,12 @@ describe('SiteStripeへのボタン挿入', () => {
     const container = document.getElementById('amazon-embed-button-container');
     expect(container?.getAttribute('style')).toBeFalsy();
   });
+
+  it('ボタンにwidth:100%が設定される（コンテナ幅に合わせて表示）', () => {
+    // リンク生成ボタンはa-declarativeスパンでラップされブロック表示されるため
+    // 同等の幅を確保するためbuttonにwidth:100%を設定する
+    insertButtonAfterSiteStripe(() => {});
+    const button = document.getElementById('amazon-embed-link-button');
+    expect(button?.style.width).toBe('100%');
+  });
 });
