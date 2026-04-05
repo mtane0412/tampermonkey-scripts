@@ -1,0 +1,13 @@
+{
+  "name": "@scripts/amazon-embed-link",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Amazon.co.jpの商品ページにブログ埋め込み用HTMLカードを生成するTampermonkeyスクリプト",
+  "author": "mtane0412",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  }
+}

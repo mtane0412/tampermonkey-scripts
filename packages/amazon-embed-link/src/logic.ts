@@ -1,0 +1,233 @@
+/**
+ * Amazon商品ページの情報抽出と埋め込みHTMLカード生成ロジック
+ *
+ * このモジュールはすべて純粋関数で構成され、DOMへの副作用を持たない。
+ * テスト容易性のため、すべてのDOM依存は引数として受け取る。
+ */
+
+/** アソシエイトタグ */
+const ASSOCIATE_TAG = 'mtane0412-22';
+
+/** AmazonベースURL */
+const AMAZON_BASE_URL = 'https://www.amazon.co.jp';
+
+/** 説明文の最大表示文字数（省略記号3文字を含む） */
+const MAX_DESCRIPTION_LENGTH = 120;
+
+/**
+ * Amazon商品情報
+ */
+export interface ProductInfo {
+  /** 商品タイトル */
+  title: string;
+  /** 商品画像URL */
+  imageUrl: string;
+  /** 商品説明文 */
+  description: string;
+  /** 価格（例: ¥4,158） */
+  price: string;
+  /** Amazon ASIN（10文字の英数字） */
+  asin: string;
+}
+
+/**
+ * URLからASINを抽出する
+ * /dp/XXXXXXXXXX または /gp/product/XXXXXXXXXX 形式のURLに対応
+ *
+ * @param url - AmazonのURL
+ * @returns ASIN（10文字の英数字）またはnull
+ */
+export function extractAsin(url: string): string | null {
+  const match = /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i.exec(url);
+  return match?.[1] ?? null;
+}
+
+/**
+ * テキストを指定した最大文字数以内に切り詰める
+ * 省略記号（"..."、3文字）を含めて最大文字数以内に収める
+ *
+ * @param text - 元のテキスト
+ * @param maxLength - 最大文字数（省略記号を含む）
+ * @returns 切り詰めたテキスト（超過時は maxLength 文字以内に収めて末尾に"..."を付加）
+ */
+export function truncateText(text: string, maxLength: number): string {
+  // maxLength <= 0 の場合は空文字を返す
+  if (maxLength <= 0) {
+    return '';
+  }
+  if (text.length <= maxLength) {
+    return text;
+  }
+  // maxLength <= 3 の場合は省略記号をmaxLength文字分で返す（"..." 3文字の余地がない）
+  if (maxLength <= 3) {
+    return '.'.repeat(maxLength);
+  }
+  // 省略記号3文字分を確保してスライスする
+  const sliceLength = maxLength - 3;
+  return text.slice(0, sliceLength) + '...';
+}
+
+/**
+ * アフィリエイトリンクURLを生成する
+ *
+ * @param asin - Amazon ASIN（英数字10文字）
+ * @returns アソシエイトタグ付きのURL
+ * @throws {Error} ASINが不正な形式の場合
+ */
+export function generateAffiliateUrl(asin: string): string {
+  // ASINは英数字10文字に限定する（厳密バリデーション）
+  if (!/^[A-Z0-9]{10}$/i.test(asin)) {
+    throw new Error('Invalid ASIN: ASIN must be a 10-character alphanumeric string');
+  }
+  return `${AMAZON_BASE_URL}/dp/${asin.toUpperCase()}/ref=nosim?tag=${ASSOCIATE_TAG}`;
+}
+
+/**
+ * ページDOMから商品情報を抽出する
+ *
+ * セレクタのフォールバック:
+ * - title: #productTitle → #title → document.title
+ * - imageUrl: #landingImage → #imgBlkFront → #main-image
+ * - description: meta[name="description"]
+ * - price: .a-price .a-offscreen → #priceblock_ourprice → .a-price-whole
+ * - asin: URLから抽出
+ *
+ * @param doc - Documentオブジェクト
+ * @param url - 現在のページURL
+ * @returns 抽出した商品情報
+ */
+export function extractProductInfo(doc: Document, url: string): ProductInfo {
+  /**
+   * 複数の候補から最初の非空文字列を返すヘルパー
+   * ?? と異なり、空文字('')も無視して次の候補にフォールバックする
+   */
+  const firstNonEmpty = (...values: Array<string | null | undefined>): string =>
+    values.find((v) => v?.trim())?.trim() ?? '';
+
+  // タイトル抽出: #productTitle → #title → document.title
+  // ||で空文字もフォールバック対象にする（Amazonのプレースホルダ要素対策）
+  const title = firstNonEmpty(
+    doc.querySelector('#productTitle')?.textContent,
+    doc.querySelector('#title')?.textContent,
+    doc.title,
+  );
+
+  // 画像URL抽出: #landingImage → #imgBlkFront → #main-image
+  // ||で空文字もフォールバック対象にする
+  const imageUrl = firstNonEmpty(
+    (doc.querySelector('#landingImage') as HTMLImageElement | null)?.src,
+    (doc.querySelector('#imgBlkFront') as HTMLImageElement | null)?.src,
+    (doc.querySelector('#main-image') as HTMLImageElement | null)?.src,
+  );
+
+  // 説明文抽出: meta[name="description"] → #productDescription
+  const rawDescription = firstNonEmpty(
+    (doc.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content,
+    doc.querySelector('#productDescription')?.textContent,
+  );
+  const description = truncateText(rawDescription, MAX_DESCRIPTION_LENGTH);
+
+  // 価格抽出: .a-price .a-offscreen → #priceblock_ourprice → .a-price-whole
+  const price = firstNonEmpty(
+    doc.querySelector('.a-price .a-offscreen')?.textContent,
+    doc.querySelector('#priceblock_ourprice')?.textContent,
+    doc.querySelector('.a-price-whole')?.textContent,
+  );
+
+  // ASIN抽出
+  const asin = extractAsin(url) ?? '';
+
+  return { title, imageUrl, description, price, asin };
+}
+
+/**
+ * Amazon商品情報からブログ埋め込み用HTMLカードを生成する
+ *
+ * 生成されるHTMLはすべてインラインスタイルで記述されており、
+ * 外部スタイルシートなしでブログに貼り付けて使用できる。
+ * レスポンシブ対応のため <style> ブロックも含む。
+ *
+ * セキュリティ: タイトル・説明文・価格はescapeHtmlでXSSを防ぐ。
+ * affiliateUrlはASINとハードコードされた定数から生成するため安全。
+ * imageUrlはAmazonのページから取得したsrc属性値であり、escapeHtmlで属性エスケープする。
+ *
+ * @param product - Amazon商品情報
+ * @returns 自己完結型の埋め込みHTML文字列
+ */
+export function generateEmbedHtml(product: ProductInfo): string {
+  // affiliateUrlもhref属性コンテキスト用にエスケープする（二重防御）
+  const affiliateUrl = escapeHtml(generateAffiliateUrl(product.asin));
+  // imageUrlを属性コンテキスト用にエスケープする
+  const safeImageUrl = escapeHtml(product.imageUrl);
+
+  return `<div class="amazon-link-card" style="
+  max-width: 600px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  margin: 20px auto;
+">
+  <a href="${affiliateUrl}"
+     target="_blank"
+     rel="noopener noreferrer"
+     style="text-decoration: none; color: inherit; display: flex; flex-direction: row; width: 100%;">
+
+    <div style="flex: 0 0 180px; background: #f7f7f7; display: flex; align-items: center; justify-content: center; padding: 16px;">
+      <img src="${safeImageUrl}"
+           alt="${escapeHtml(product.title)}"
+           style="max-width: 100%; max-height: 200px; object-fit: contain;">
+    </div>
+
+    <div style="flex: 1; padding: 16px; display: flex; flex-direction: column; justify-content: space-between;">
+      <div>
+        <div style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; line-height: 1.4; color: #111;">
+          ${escapeHtml(product.title)}
+        </div>
+        <p style="margin: 0 0 12px 0; font-size: 14px; color: #666; line-height: 1.5;">
+          ${escapeHtml(product.description)}
+        </p>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-size: 18px; font-weight: 700; color: #B12704;">
+          ${escapeHtml(product.price)}
+        </span>
+        <span style="font-size: 12px; color: #0066c0; font-weight: 500;">
+          Amazonで見る →
+        </span>
+      </div>
+    </div>
+  </a>
+</div>
+
+<style>
+@media (max-width: 600px) {
+  .amazon-link-card a {
+    flex-direction: column !important;
+  }
+  .amazon-link-card a > div:first-child {
+    flex: 0 0 auto !important;
+    padding: 20px !important;
+  }
+}
+</style>`;
+}
+
+/**
+ * HTMLの特殊文字をエスケープする
+ * XSSを防ぐため、生成するHTMLに埋め込むテキストや属性値に適用する
+ *
+ * @param text - エスケープするテキスト
+ * @returns エスケープ済みテキスト
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
