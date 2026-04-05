@@ -39,10 +39,11 @@ describe('truncateText', () => {
     expect(truncateText('短いテキスト', 100)).toBe('短いテキスト');
   });
 
-  it('最大文字数を超えるテキストは省略記号付きで切り詰める', () => {
+  it('最大文字数を超えるテキストは最大文字数以内に切り詰め省略記号を付ける', () => {
     const テキスト = 'あ'.repeat(150);
     const 結果 = truncateText(テキスト, 100);
-    expect(結果).toHaveLength(103); // 100文字 + '...'
+    // maxLength以内に収まる（省略記号3文字分を考慮して97文字 + '...' = 100文字）
+    expect(結果.length).toBeLessThanOrEqual(100);
     expect(結果.endsWith('...')).toBe(true);
   });
 
@@ -58,6 +59,10 @@ describe('generateAffiliateUrl', () => {
       'https://www.amazon.co.jp/dp/B08NNJZGXN/ref=nosim?tag=mtane0412-22',
     );
   });
+
+  it('空のASINの場合はエラーをスローする', () => {
+    expect(() => generateAffiliateUrl('')).toThrow('Invalid ASIN');
+  });
 });
 
 describe('extractProductInfo', () => {
@@ -71,7 +76,6 @@ describe('extractProductInfo', () => {
     doc.body.innerHTML = `
       <span id="productTitle">テスト商品タイトル　</span>
       <img id="landingImage" src="https://example.com/image.jpg" />
-      <meta name="description" content="商品の説明文です。" />
     `;
     const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
     expect(info.title).toBe('テスト商品タイトル');
@@ -96,6 +100,7 @@ describe('extractProductInfo', () => {
   });
 
   it('meta[name="description"]から説明を抽出できる', () => {
+    // metaタグはheadに挿入する（bodyではなくheadが正しい位置）
     const meta = doc.createElement('meta');
     meta.setAttribute('name', 'description');
     meta.setAttribute('content', 'これは商品の説明文です。');
@@ -124,6 +129,7 @@ describe('extractProductInfo', () => {
     const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
     expect(info.imageUrl).toBe('');
     expect(info.price).toBe('');
+    expect(info.description).toBe('');
   });
 });
 
@@ -170,5 +176,19 @@ describe('generateEmbedHtml', () => {
   it('amazon-link-cardクラスを含む', () => {
     const html = generateEmbedHtml(サンプル商品);
     expect(html).toContain('amazon-link-card');
+  });
+
+  it('タイトルにHTMLタグが含まれる場合はエスケープされる（XSS対策）', () => {
+    const XSS危険商品 = {
+      ...サンプル商品,
+      title: '<script>alert("xss")</script>悪意のある商品',
+      description: '<img src=x onerror=alert(1)>説明文',
+    };
+    const html = generateEmbedHtml(XSS危険商品);
+    // 生のスクリプトタグが含まれていないことを確認
+    expect(html).not.toContain('<script>alert("xss")</script>');
+    // エスケープされた形式が含まれていることを確認
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
   });
 });

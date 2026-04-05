@@ -11,7 +11,7 @@ const ASSOCIATE_TAG = 'mtane0412-22';
 /** AmazonベースURL */
 const AMAZON_BASE_URL = 'https://www.amazon.co.jp';
 
-/** 説明文の最大表示文字数 */
+/** 説明文の最大表示文字数（省略記号3文字を含む） */
 const MAX_DESCRIPTION_LENGTH = 120;
 
 /**
@@ -43,26 +43,33 @@ export function extractAsin(url: string): string | null {
 }
 
 /**
- * テキストを指定した最大文字数で切り詰める
+ * テキストを指定した最大文字数以内に切り詰める
+ * 省略記号（"..."、3文字）を含めて最大文字数以内に収める
  *
  * @param text - 元のテキスト
- * @param maxLength - 最大文字数
- * @returns 切り詰めたテキスト（超過時は末尾に"..."を付加）
+ * @param maxLength - 最大文字数（省略記号を含む）
+ * @returns 切り詰めたテキスト（超過時は maxLength 文字以内に収めて末尾に"..."を付加）
  */
 export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) {
     return text;
   }
-  return text.slice(0, maxLength) + '...';
+  // 省略記号3文字分を確保してスライスする
+  const sliceLength = Math.max(0, maxLength - 3);
+  return text.slice(0, sliceLength) + '...';
 }
 
 /**
  * アフィリエイトリンクURLを生成する
  *
- * @param asin - Amazon ASIN
+ * @param asin - Amazon ASIN（空文字は不可）
  * @returns アソシエイトタグ付きのURL
+ * @throws {Error} ASINが空の場合
  */
 export function generateAffiliateUrl(asin: string): string {
+  if (!asin) {
+    throw new Error('Invalid ASIN: ASIN must not be empty');
+  }
   return `${AMAZON_BASE_URL}/dp/${asin}/ref=nosim?tag=${ASSOCIATE_TAG}`;
 }
 
@@ -70,7 +77,7 @@ export function generateAffiliateUrl(asin: string): string {
  * ページDOMから商品情報を抽出する
  *
  * セレクタのフォールバック:
- * - title: #productTitle → document.title
+ * - title: #productTitle → #title → document.title
  * - imageUrl: #landingImage → #imgBlkFront → #main-image
  * - description: meta[name="description"]
  * - price: .a-price .a-offscreen → #priceblock_ourprice → .a-price-whole
@@ -81,7 +88,7 @@ export function generateAffiliateUrl(asin: string): string {
  * @returns 抽出した商品情報
  */
 export function extractProductInfo(doc: Document, url: string): ProductInfo {
-  // タイトル抽出: #productTitle → document.title
+  // タイトル抽出: #productTitle → #title → document.title
   const title =
     doc.querySelector('#productTitle')?.textContent?.trim() ??
     doc.querySelector('#title')?.textContent?.trim() ??
@@ -94,7 +101,7 @@ export function extractProductInfo(doc: Document, url: string): ProductInfo {
     (doc.querySelector('#main-image') as HTMLImageElement | null)?.src ??
     '';
 
-  // 説明文抽出: meta[name="description"]
+  // 説明文抽出: meta[name="description"] → #productDescription
   const rawDescription =
     (doc.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content ??
     doc.querySelector('#productDescription')?.textContent?.trim() ??
@@ -121,11 +128,17 @@ export function extractProductInfo(doc: Document, url: string): ProductInfo {
  * 外部スタイルシートなしでブログに貼り付けて使用できる。
  * レスポンシブ対応のため <style> ブロックも含む。
  *
+ * セキュリティ: タイトル・説明文・価格はescapeHtmlでXSSを防ぐ。
+ * affiliateUrlはASINとハードコードされた定数から生成するため安全。
+ * imageUrlはAmazonのページから取得したsrc属性値であり、escapeHtmlで属性エスケープする。
+ *
  * @param product - Amazon商品情報
  * @returns 自己完結型の埋め込みHTML文字列
  */
 export function generateEmbedHtml(product: ProductInfo): string {
   const affiliateUrl = generateAffiliateUrl(product.asin);
+  // imageUrlを属性コンテキスト用にエスケープする
+  const safeImageUrl = escapeHtml(product.imageUrl);
 
   return `<div class="amazon-link-card" style="
   max-width: 600px;
@@ -143,7 +156,7 @@ export function generateEmbedHtml(product: ProductInfo): string {
      style="text-decoration: none; color: inherit; display: flex; flex-direction: row; width: 100%;">
 
     <div style="flex: 0 0 180px; background: #f7f7f7; display: flex; align-items: center; justify-content: center; padding: 16px;">
-      <img src="${product.imageUrl}"
+      <img src="${safeImageUrl}"
            alt="${escapeHtml(product.title)}"
            style="max-width: 100%; max-height: 200px; object-fit: contain;">
     </div>
@@ -185,7 +198,7 @@ export function generateEmbedHtml(product: ProductInfo): string {
 
 /**
  * HTMLの特殊文字をエスケープする
- * XSSを防ぐため、生成するHTMLに埋め込むテキストに適用する
+ * XSSを防ぐため、生成するHTMLに埋め込むテキストや属性値に適用する
  *
  * @param text - エスケープするテキスト
  * @returns エスケープ済みテキスト

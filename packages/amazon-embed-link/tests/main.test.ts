@@ -3,7 +3,7 @@
  * ボタン挿入・モーダル表示・クリップボードコピーの動作を検証する
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createEmbedButton, showModal, hideModal } from '../src/main';
+import { createEmbedButton, insertButtonAfterSiteStripe, showModal, hideModal } from '../src/main';
 
 /** テスト用のモックSiteStripeツールバーHTMLを生成する */
 function createMockSiteStripe(): HTMLElement {
@@ -28,6 +28,11 @@ describe('createEmbedButton', () => {
     expect(button.textContent).toContain('埋め込みリンク');
   });
 
+  it('aria-labelが設定されている（アクセシビリティ）', () => {
+    const button = createEmbedButton(() => {});
+    expect(button.getAttribute('aria-label')).toBe('埋め込みリンク');
+  });
+
   it('クリック時にコールバックが呼ばれる', () => {
     const コールバック = vi.fn();
     const button = createEmbedButton(コールバック);
@@ -38,8 +43,9 @@ describe('createEmbedButton', () => {
 
 describe('showModal / hideModal', () => {
   afterEach(() => {
-    // 各テスト後にモーダルを後片付けする
+    // 各テスト後にモーダルを後片付けし、グローバルスタブをリセットする
     hideModal();
+    vi.unstubAllGlobals();
   });
 
   it('showModalを呼ぶとDOMにオーバーレイが追加される', () => {
@@ -70,7 +76,7 @@ describe('showModal / hideModal', () => {
   });
 
   it('コピーボタンクリック時にGM_setClipboardが呼ばれる', () => {
-    // GM_setClipboardをスタブとして設定する
+    // GM_setClipboardをスタブとして設定する（afterEachでunstubAllGlobalsが呼ばれる）
     const クリップボードスタブ = vi.fn();
     vi.stubGlobal('GM_setClipboard', クリップボードスタブ);
 
@@ -82,8 +88,6 @@ describe('showModal / hideModal', () => {
     コピーボタン?.click();
 
     expect(クリップボードスタブ).toHaveBeenCalledWith(サンプルHTML, 'text');
-
-    vi.unstubAllGlobals();
   });
 
   it('閉じるボタンクリック時にモーダルが閉じる', () => {
@@ -108,11 +112,8 @@ describe('SiteStripeへのボタン挿入', () => {
     hideModal();
   });
 
-  it('SiteStripeツールバーにボタンが挿入される', async () => {
-    // insertButtonAfterSiteStripeを呼び出す
-    const { insertButtonAfterSiteStripe } = await import('../src/main');
+  it('SiteStripeツールバーにボタンが挿入される', () => {
     insertButtonAfterSiteStripe(() => {});
-
     const container = document.getElementById('amazon-embed-button-container');
     expect(container).not.toBeNull();
   });

@@ -4,6 +4,7 @@
 // @version      1.0.0
 // @author       mtane0412
 // @description  Amazon.co.jpの商品ページに埋め込み用HTMLカードを生成するボタンを追加する
+// @license      MIT
 // @match        https://www.amazon.co.jp/*/dp/*
 // @match        https://www.amazon.co.jp/dp/*
 // @match        https://www.amazon.co.jp/gp/product/*
@@ -24,9 +25,13 @@
     if (text.length <= maxLength) {
       return text;
     }
-    return text.slice(0, maxLength) + "...";
+    const sliceLength = Math.max(0, maxLength - 3);
+    return text.slice(0, sliceLength) + "...";
   }
   function generateAffiliateUrl(asin) {
+    if (!asin) {
+      throw new Error("Invalid ASIN: ASIN must not be empty");
+    }
     return `${AMAZON_BASE_URL}/dp/${asin}/ref=nosim?tag=${ASSOCIATE_TAG}`;
   }
   function extractProductInfo(doc, url) {
@@ -41,6 +46,7 @@
   }
   function generateEmbedHtml(product) {
     const affiliateUrl = generateAffiliateUrl(product.asin);
+    const safeImageUrl = escapeHtml(product.imageUrl);
     return `<div class="amazon-link-card" style="
   max-width: 600px;
   border: 1px solid #ddd;
@@ -57,7 +63,7 @@
      style="text-decoration: none; color: inherit; display: flex; flex-direction: row; width: 100%;">
 
     <div style="flex: 0 0 180px; background: #f7f7f7; display: flex; align-items: center; justify-content: center; padding: 16px;">
-      <img src="${product.imageUrl}"
+      <img src="${safeImageUrl}"
            alt="${escapeHtml(product.title)}"
            style="max-width: 100%; max-height: 200px; object-fit: contain;">
     </div>
@@ -107,6 +113,7 @@
     button.id = "amazon-embed-link-button";
     button.className = "a-button-text";
     button.textContent = "埋め込みリンク";
+    button.setAttribute("aria-label", "埋め込みリンク");
     button.type = "button";
     button.style.cssText = `
     background: #e77600;
@@ -234,11 +241,15 @@
     padding: 8px 20px;
     margin-top: 12px;
   `;
+    let copyResetTimerId;
     copyButton.addEventListener("click", () => {
       GM_setClipboard(html, "text");
       copyButton.textContent = "コピーしました！";
-      setTimeout(() => {
-        copyButton.textContent = "HTMLをコピー";
+      clearTimeout(copyResetTimerId);
+      copyResetTimerId = setTimeout(() => {
+        if (document.getElementById(MODAL_OVERLAY_ID)) {
+          copyButton.textContent = "HTMLをコピー";
+        }
       }, 2e3);
     });
     modal.appendChild(header);
@@ -271,9 +282,18 @@
       }
       if (retries >= MAX_RETRIES) {
         clearInterval(intervalId);
+        console.warn(
+          `[amazon-embed-link] SiteStripeが見つかりませんでした。`,
+          `セレクタ: ${SITESTRIPE_LINK_CONTAINER_SELECTOR}`,
+          `URL: ${location.href}`
+        );
       }
     }, 500);
   }
-  waitForSiteStripeAndInsertButton();
+  try {
+    waitForSiteStripeAndInsertButton();
+  } catch (err) {
+    console.error("[amazon-embed-link] 初期化に失敗しました:", err);
+  }
 
 })();

@@ -33,6 +33,7 @@ export function createEmbedButton(onClick: () => void): HTMLButtonElement {
   button.id = 'amazon-embed-link-button';
   button.className = 'a-button-text';
   button.textContent = '埋め込みリンク';
+  button.setAttribute('aria-label', '埋め込みリンク');
   button.type = 'button';
   button.style.cssText = `
     background: #e77600;
@@ -194,11 +195,18 @@ export function showModal(html: string): void {
     padding: 8px 20px;
     margin-top: 12px;
   `;
+  // コピー後のラベル復元タイマーID（モーダル閉鎖時にキャンセルするため保持する）
+  let copyResetTimerId: ReturnType<typeof setTimeout> | undefined;
   copyButton.addEventListener('click', () => {
     GM_setClipboard(html, 'text');
     copyButton.textContent = 'コピーしました！';
-    setTimeout(() => {
-      copyButton.textContent = 'HTMLをコピー';
+    // 既存のタイマーをキャンセルしてから新しいタイマーを設定する
+    clearTimeout(copyResetTimerId);
+    copyResetTimerId = setTimeout(() => {
+      // モーダルがすでに閉じている場合はDOMを操作しない
+      if (document.getElementById(MODAL_OVERLAY_ID)) {
+        copyButton.textContent = 'HTMLをコピー';
+      }
     }, 2000);
   });
 
@@ -244,8 +252,18 @@ function waitForSiteStripeAndInsertButton(): void {
 
     if (retries >= MAX_RETRIES) {
       clearInterval(intervalId);
+      // MAX_RETRIES回試行してもSiteStripeが見つからなかった場合はデバッグ用にログを出力する
+      console.warn(
+        `[amazon-embed-link] SiteStripeが見つかりませんでした。`,
+        `セレクタ: ${SITESTRIPE_LINK_CONTAINER_SELECTOR}`,
+        `URL: ${location.href}`,
+      );
     }
   }, 500);
 }
 
-waitForSiteStripeAndInsertButton();
+try {
+  waitForSiteStripeAndInsertButton();
+} catch (err) {
+  console.error('[amazon-embed-link] 初期化に失敗しました:', err);
+}
