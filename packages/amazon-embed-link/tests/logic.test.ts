@@ -1,0 +1,174 @@
+/**
+ * logic.ts の純粋関数テスト
+ * 商品情報抽出・HTML生成ロジックの単体テスト
+ */
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  extractAsin,
+  extractProductInfo,
+  generateAffiliateUrl,
+  generateEmbedHtml,
+  truncateText,
+} from '../src/logic';
+
+describe('extractAsin', () => {
+  it('/dp/ASIN形式のURLからASINを抽出できる', () => {
+    expect(extractAsin('https://www.amazon.co.jp/dp/B08NNJZGXN/')).toBe('B08NNJZGXN');
+  });
+
+  it('/*/dp/ASIN形式のURLからASINを抽出できる', () => {
+    expect(extractAsin('https://www.amazon.co.jp/商品名/dp/B08NNJZGXN/')).toBe('B08NNJZGXN');
+  });
+
+  it('/gp/product/ASIN形式のURLからASINを抽出できる', () => {
+    expect(extractAsin('https://www.amazon.co.jp/gp/product/B08NNJZGXN')).toBe('B08NNJZGXN');
+  });
+
+  it('クエリパラメータ付きURLからASINを抽出できる', () => {
+    expect(extractAsin('https://www.amazon.co.jp/dp/B08NNJZGXN?ref=sr_1_1')).toBe('B08NNJZGXN');
+  });
+
+  it('商品URLでない場合はnullを返す', () => {
+    expect(extractAsin('https://www.amazon.co.jp/')).toBeNull();
+    expect(extractAsin('https://www.amazon.co.jp/s?k=テスト')).toBeNull();
+  });
+});
+
+describe('truncateText', () => {
+  it('最大文字数以下のテキストはそのまま返す', () => {
+    expect(truncateText('短いテキスト', 100)).toBe('短いテキスト');
+  });
+
+  it('最大文字数を超えるテキストは省略記号付きで切り詰める', () => {
+    const テキスト = 'あ'.repeat(150);
+    const 結果 = truncateText(テキスト, 100);
+    expect(結果).toHaveLength(103); // 100文字 + '...'
+    expect(結果.endsWith('...')).toBe(true);
+  });
+
+  it('ちょうど最大文字数のテキストはそのまま返す', () => {
+    const テキスト = 'あ'.repeat(100);
+    expect(truncateText(テキスト, 100)).toBe(テキスト);
+  });
+});
+
+describe('generateAffiliateUrl', () => {
+  it('正しいアフィリエイトURLを生成する', () => {
+    expect(generateAffiliateUrl('B08NNJZGXN')).toBe(
+      'https://www.amazon.co.jp/dp/B08NNJZGXN/ref=nosim?tag=mtane0412-22',
+    );
+  });
+});
+
+describe('extractProductInfo', () => {
+  let doc: Document;
+
+  beforeEach(() => {
+    doc = document.implementation.createHTMLDocument('テスト商品ページ');
+  });
+
+  it('#productTitleからタイトルを抽出できる', () => {
+    doc.body.innerHTML = `
+      <span id="productTitle">テスト商品タイトル　</span>
+      <img id="landingImage" src="https://example.com/image.jpg" />
+      <meta name="description" content="商品の説明文です。" />
+    `;
+    const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
+    expect(info.title).toBe('テスト商品タイトル');
+  });
+
+  it('#productTitleがない場合はdocument.titleにフォールバックする', () => {
+    doc.title = 'ドキュメントタイトル';
+    doc.body.innerHTML = `
+      <img id="landingImage" src="https://example.com/image.jpg" />
+    `;
+    const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
+    expect(info.title).toBe('ドキュメントタイトル');
+  });
+
+  it('#landingImageから画像URLを抽出できる', () => {
+    doc.body.innerHTML = `
+      <span id="productTitle">テスト商品</span>
+      <img id="landingImage" src="https://m.media-amazon.com/images/product.jpg" />
+    `;
+    const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
+    expect(info.imageUrl).toBe('https://m.media-amazon.com/images/product.jpg');
+  });
+
+  it('meta[name="description"]から説明を抽出できる', () => {
+    const meta = doc.createElement('meta');
+    meta.setAttribute('name', 'description');
+    meta.setAttribute('content', 'これは商品の説明文です。');
+    doc.head.appendChild(meta);
+    doc.body.innerHTML = `<span id="productTitle">テスト商品</span>`;
+    const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
+    expect(info.description).toBe('これは商品の説明文です。');
+  });
+
+  it('.a-price .a-offscreenから価格を抽出できる', () => {
+    doc.body.innerHTML = `
+      <span id="productTitle">テスト商品</span>
+      <span class="a-price"><span class="a-offscreen">¥1,234</span></span>
+    `;
+    const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
+    expect(info.price).toBe('¥1,234');
+  });
+
+  it('URLからASINを抽出できる', () => {
+    doc.body.innerHTML = `<span id="productTitle">テスト商品</span>`;
+    const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
+    expect(info.asin).toBe('B08NNJZGXN');
+  });
+
+  it('要素が見つからない場合は空文字を返す', () => {
+    const info = extractProductInfo(doc, 'https://www.amazon.co.jp/dp/B08NNJZGXN');
+    expect(info.imageUrl).toBe('');
+    expect(info.price).toBe('');
+  });
+});
+
+describe('generateEmbedHtml', () => {
+  const サンプル商品 = {
+    title: 'テスト商品タイトル',
+    imageUrl: 'https://m.media-amazon.com/images/test.jpg',
+    description: 'テスト商品の説明文です。',
+    price: '¥4,158',
+    asin: 'B08NNJZGXN',
+  };
+
+  it('アフィリエイトURLを含む', () => {
+    const html = generateEmbedHtml(サンプル商品);
+    expect(html).toContain('https://www.amazon.co.jp/dp/B08NNJZGXN/ref=nosim?tag=mtane0412-22');
+  });
+
+  it('商品タイトルを含む', () => {
+    const html = generateEmbedHtml(サンプル商品);
+    expect(html).toContain('テスト商品タイトル');
+  });
+
+  it('商品画像URLを含む', () => {
+    const html = generateEmbedHtml(サンプル商品);
+    expect(html).toContain('https://m.media-amazon.com/images/test.jpg');
+  });
+
+  it('価格を含む', () => {
+    const html = generateEmbedHtml(サンプル商品);
+    expect(html).toContain('¥4,158');
+  });
+
+  it('"Amazonで見る"テキストを含む', () => {
+    const html = generateEmbedHtml(サンプル商品);
+    expect(html).toContain('Amazonで見る');
+  });
+
+  it('レスポンシブ用<style>ブロックを含む', () => {
+    const html = generateEmbedHtml(サンプル商品);
+    expect(html).toContain('<style>');
+    expect(html).toContain('@media');
+  });
+
+  it('amazon-link-cardクラスを含む', () => {
+    const html = generateEmbedHtml(サンプル商品);
+    expect(html).toContain('amazon-link-card');
+  });
+});
