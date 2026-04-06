@@ -42,7 +42,10 @@
       }
     }
     if (init == null ? void 0 : init.referrer) {
-      headers["Referer"] = init.referrer;
+      const initReferrer = init.referrer;
+      if (initReferrer !== "no-referrer" && initReferrer !== "about:client" && initReferrer !== "") {
+        headers["Referer"] = initReferrer;
+      }
     }
     if (init == null ? void 0 : init.referrerPolicy) {
       headers["Referrer-Policy"] = init.referrerPolicy;
@@ -52,26 +55,31 @@
       reject(new DOMException("Aborted", "AbortError"));
       return;
     }
+    let cleanupSignalListener = () => {
+    };
     const { abort } = GM_xmlhttpRequest({
 method: request.method,
       url: request.url,
       headers,
+
 ...(init == null ? void 0 : init.body) ? { data: init.body } : {},
 anonymous: request.credentials === "omit",
 responseType: "stream",
       fetch: true,
       onerror: () => {
+        cleanupSignalListener();
         reject(new TypeError("Network request failed"));
       },
       ontimeout: () => {
+        cleanupSignalListener();
         reject(new TypeError("Network request timeout"));
       },
       onabort: () => {
+        cleanupSignalListener();
         reject(new DOMException("Aborted", "AbortError"));
       },
 
 onreadystatechange: (res) => {
-        var _a2, _b2;
         switch (res.readyState) {
           case 2: {
             const body = res.response ?? null;
@@ -85,11 +93,15 @@ onreadystatechange: (res) => {
             break;
           }
           case 4:
-            (_b2 = (_a2 = request.signal) == null ? void 0 : _a2.removeEventListener) == null ? void 0 : _b2.call(_a2, "abort", abort);
+            cleanupSignalListener();
             break;
         }
       }
     });
+    cleanupSignalListener = () => {
+      var _a2, _b2;
+      return (_b2 = (_a2 = request.signal) == null ? void 0 : _a2.removeEventListener) == null ? void 0 : _b2.call(_a2, "abort", abort);
+    };
     (_c = (_b = request.signal) == null ? void 0 : _b.addEventListener) == null ? void 0 : _c.call(_b, "abort", abort);
   });
   unsafeWindow["GM_fetch"] = gmFetch;

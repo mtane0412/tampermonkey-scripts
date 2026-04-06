@@ -316,14 +316,30 @@ describe('gmFetch', () => {
       expect(headers?.['Referer']).toBe('https://referrer.example.com/')
     })
 
-    it('Request.referrerが"no-referrer"の場合はRefererヘッダーを設定しない', async () => {
-      // 前提: Requestオブジェクトにno-referrerが設定されている場合
-      // 注意: happy-dom では Request.referrer の挙動が 'about:client' になるため
-      // このテストはno-referrerという特殊値のスキップロジックを直接確認するものではなく
-      // 実装が no-referrer を適切に処理することを確認するコメントとして残す
+    it.skip('Request.referrerが"no-referrer"の場合はRefererヘッダーを設定しない', async () => {
+      // 注意: happy-dom 環境では Request.referrer が 'about:client' に正規化されるため
+      // このテストは happy-dom の制限によりスキップする
+      // logic.ts の referrer !== 'no-referrer' 条件で適切にスキップされる（実装済み）
+    })
+
+    it('init.referrerが"no-referrer"の場合はRefererヘッダーを設定しない', async () => {
+      // 前提: initに "no-referrer" という特殊値を指定した場合
       setupGmXhrMock()
-      // 参考: logic.ts の referrer !== 'no-referrer' 条件で適切にスキップされる
-      expect(true).toBe(true)
+      await gmFetch('https://example.com/', { referrer: 'no-referrer' })
+      const mockFn = vi.mocked(GM_xmlhttpRequest)
+      const headers = mockFn.mock.calls[0]?.[0]?.headers as Record<string, string>
+      // "no-referrer" は特殊値なのでRefererヘッダーに設定されないことを確認する
+      expect(headers?.['Referer']).toBeUndefined()
+    })
+
+    it('init.referrerが"about:client"の場合はRefererヘッダーを設定しない', async () => {
+      // 前提: initに "about:client" という特殊値を指定した場合
+      setupGmXhrMock()
+      await gmFetch('https://example.com/', { referrer: 'about:client' })
+      const mockFn = vi.mocked(GM_xmlhttpRequest)
+      const headers = mockFn.mock.calls[0]?.[0]?.headers as Record<string, string>
+      // "about:client" は特殊値なのでRefererヘッダーに設定されないことを確認する
+      expect(headers?.['Referer']).toBeUndefined()
     })
   })
 

@@ -4,6 +4,10 @@
  * 目的: GM_xmlhttpRequest を使って Fetch API 互換の関数を提供する
  * 詳細: whatwg-fetch polyfill をベースに、CORS を回避したリクエストを可能にする
  * 参考: https://scrapbox.io/takker/GM_fetch
+ *
+ * 制限事項:
+ * - input に body 付きの Request オブジェクトを渡した場合、body は送信されない
+ *   （Request.body は ReadableStream であり非同期読み取りが必要なため、init.body を使用すること）
  */
 
 /**
@@ -72,7 +76,11 @@ export const gmFetch = (
       }
     }
     if (init?.referrer) {
-      headers['Referer'] = init.referrer
+      // "no-referrer", "about:client", "" は特殊値のためRefererヘッダーに設定しない
+      const initReferrer = init.referrer
+      if (initReferrer !== 'no-referrer' && initReferrer !== 'about:client' && initReferrer !== '') {
+        headers['Referer'] = initReferrer
+      }
     }
     if (init?.referrerPolicy) {
       headers['Referrer-Policy'] = init.referrerPolicy
@@ -86,12 +94,17 @@ export const gmFetch = (
       return
     }
 
+    // AbortSignal リスナーを onerror/ontimeout/onabort/readyState=4 すべてで解除するための
+    // クリーンアップ関数。GM_xmlhttpRequest の戻り値確定後に実装が設定される。
+    let cleanupSignalListener = () => {}
+
     const { abort } = GM_xmlhttpRequest({
       // @ts-expect-error method は標準的な文字列が入るため安全
       method: request.method,
       url: request.url,
       headers,
       // init.body から直接取り出す（request.text() で取り出すと await が必要になるため）
+      // 制限: input が Request オブジェクトで body を持つ場合は body が送信されない
       ...(init?.body ? { data: init.body } : {}),
       // credentials: "omit" の場合は Cookie などを送らない匿名リクエストとして扱う
       anonymous: request.credentials === 'omit',
@@ -99,12 +112,15 @@ export const gmFetch = (
       responseType: 'stream',
       fetch: true,
       onerror: () => {
+        cleanupSignalListener()
         reject(new TypeError('Network request failed'))
       },
       ontimeout: () => {
+        cleanupSignalListener()
         reject(new TypeError('Network request timeout'))
       },
       onabort: () => {
+        cleanupSignalListener()
         reject(new DOMException('Aborted', 'AbortError'))
       },
       // fetch と同様に HEADERS_RECEIVED（readyState=2）の段階で Promise を resolve する
@@ -129,7 +145,7 @@ export const gmFetch = (
           }
           case 4:
             // リクエスト完了時に AbortSignal のリスナーを解除する
-            request.signal?.removeEventListener?.('abort', abort)
+            cleanupSignalListener()
             break
           default:
             break
@@ -137,6 +153,8 @@ export const gmFetch = (
       },
     })
 
-    // AbortSignal が渡された場合、abort イベントで GM_xmlhttpRequest をキャンセルする
+    // GM_xmlhttpRequest の戻り値（abort 関数）が確定したので
+    // AbortSignal リスナーとクリーンアップ関数を設定する
+    cleanupSignalListener = () => request.signal?.removeEventListener?.('abort', abort)
     request.signal?.addEventListener?.('abort', abort)
   })
