@@ -25,12 +25,21 @@
   );
   const gmFetch = (input, init) => new Promise((resolve, reject) => {
     var _a, _b, _c;
-    const headers = Object.fromEntries(
-      new Headers(input instanceof Request ? input.headers : init == null ? void 0 : init.headers).entries()
-    );
+    const mergedHeaders = new Headers(input instanceof Request ? input.headers : void 0);
+    if (init == null ? void 0 : init.headers) {
+      for (const [name, value] of new Headers(init.headers).entries()) {
+        mergedHeaders.set(name, value);
+      }
+    }
+    const headers = Object.fromEntries(mergedHeaders.entries());
     if (input instanceof Request) {
-      headers["Referer"] = input.referrer;
-      headers["Referrer-Policy"] = input.referrerPolicy;
+      const referrer = input.referrer;
+      if (referrer && referrer !== "no-referrer" && referrer !== "about:client") {
+        headers["Referer"] = referrer;
+      }
+      if (input.referrerPolicy) {
+        headers["Referrer-Policy"] = input.referrerPolicy;
+      }
     }
     if (init == null ? void 0 : init.referrer) {
       headers["Referer"] = init.referrer;
@@ -65,7 +74,7 @@ onreadystatechange: (res) => {
         var _a2, _b2;
         switch (res.readyState) {
           case 2: {
-            const body = res.responseText ?? null;
+            const body = res.response ?? null;
             const response = new Response(body, {
               status: res.status,
               statusText: res.statusText,

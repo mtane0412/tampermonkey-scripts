@@ -50,17 +50,26 @@ export const gmFetch = (
   init?: RequestInit,
 ): Promise<Response> =>
   new Promise((resolve, reject) => {
-    // headers オブジェクトを構築する
-    // input が Request の場合はそのヘッダーを優先し、init のヘッダーで上書きする
-    const headers = Object.fromEntries(
-      new Headers(input instanceof Request ? input.headers : init?.headers).entries(),
-    )
+    // input が Request の場合はそのヘッダーをベースとし、init のヘッダーで上書きする
+    const mergedHeaders = new Headers(input instanceof Request ? input.headers : undefined)
+    if (init?.headers) {
+      for (const [name, value] of new Headers(init.headers).entries()) {
+        mergedHeaders.set(name, value)
+      }
+    }
+    const headers = Object.fromEntries(mergedHeaders.entries())
 
     // Referer / Referrer-Policy は禁止ヘッダーのため通常の Headers では設定できない
     // GM_xmlhttpRequest には直接渡す必要があるため別途処理する
     if (input instanceof Request) {
-      headers['Referer'] = input.referrer
-      headers['Referrer-Policy'] = input.referrerPolicy
+      const referrer = input.referrer
+      // "no-referrer", "", "about:client" はデフォルト動作のためスキップする
+      if (referrer && referrer !== 'no-referrer' && referrer !== 'about:client') {
+        headers['Referer'] = referrer
+      }
+      if (input.referrerPolicy) {
+        headers['Referrer-Policy'] = input.referrerPolicy
+      }
     }
     if (init?.referrer) {
       headers['Referer'] = init.referrer
@@ -99,14 +108,13 @@ export const gmFetch = (
         reject(new DOMException('Aborted', 'AbortError'))
       },
       // fetch と同様に HEADERS_RECEIVED（readyState=2）の段階で Promise を resolve する
-      // この時点でレスポンスヘッダーが利用可能になり、body は ReadableStream として遅延読み取り可能
+      // この時点でレスポンスヘッダーが利用可能になり、body は res.response（ReadableStream）として利用可能
       onreadystatechange: (res) => {
         switch (res.readyState) {
           case 2: {
-            // responseText をボディとして使用する
-            // （responseType: "stream" の場合は res.response が ReadableStream になるが
-            //   happy-dom 環境や一部の Tampermonkey では responseText を使う）
-            const body = res.responseText ?? null
+            // res.response は responseType: "stream" 時に ReadableStream として利用可能
+            // null の場合はボディなしとして扱う
+            const body = (res.response as ReadableStream | null | undefined) ?? null
             const response = new Response(body, {
               status: res.status,
               statusText: res.statusText,
